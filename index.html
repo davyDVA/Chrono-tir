@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chrono de tir</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: terse range officer — clear, fast, nothing decorative
+   IDEA: a cardboard IPSC target on the range, with a shot timer clipped on
+   PICTURE: the live timer + a row of target silhouettes that turn red as each is hit
+   COLOUR and TYPE: cardboard tan field, black ink, hit red; night = dark range; Barlow Condensed digits
+   LAYOUT: one column, timer first, big start/hit buttons, settings, then splits and history */
+:root{color-scheme:light dark;
+--bg:light-dark(#d8b77e,#1b1712);--panel:light-dark(#f3e6cc,#2a241c);--ink:light-dark(#1a140c,#f1e7d4);
+--soft:light-dark(#5b4a31,#b7a789);--line:light-dark(#b9955c,#433829);--red:#d7261e;--tgt:light-dark(#c39a5c,#5a4a34);--ok:light-dark(#1f6b3a,#5fc183)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,system-ui,sans-serif;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+.wrap{max-width:640px;margin:0 auto;padding:18px max(4vw,14px) 40px}
+h1{font:700 32px/1.05 "Barlow Condensed",sans-serif;margin:0 0 12px;text-wrap:balance}
+.clock{background:var(--panel);border-radius:18px;padding:18px 16px 14px;text-align:center;box-shadow:0 2px 0 var(--line)}
+.state{font:600 18px "Barlow Condensed";color:var(--soft);min-height:24px}
+.time{font:700 clamp(72px,24vw,132px)/1 "Barlow Condensed";font-variant-numeric:tabular-nums;letter-spacing:-1px}
+.time.par{color:var(--red)}
+.tgts{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+.tgts svg{width:44px;height:58px}
+.tgts .b{fill:var(--tgt);stroke:var(--ink);stroke-width:2;transition:fill .15s}
+.tgts .z{fill:none;stroke:var(--ink);stroke-width:1.2;opacity:.45}
+.tgts .hit .b{fill:var(--red)}
+.tgts small{display:block;font:600 13px "Barlow Condensed";color:var(--soft);text-align:center;font-variant-numeric:tabular-nums}
+.btns{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin:14px 0}
+button{font:700 22px "Barlow Condensed",sans-serif;border:0;border-radius:14px;min-height:56px;cursor:pointer;color:#fff;background:var(--ink);color:var(--panel)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+#go.stop{background:var(--soft)}
+#hit{background:var(--red);color:#fff;min-height:120px;font-size:34px;display:none}
+#hit.on{display:block}
+#hit:active{transform:scale(.98)}
+.card{background:var(--panel);border-radius:14px;padding:14px 16px;margin-top:12px}
+.card h2{font:700 22px "Barlow Condensed";margin:0 0 8px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+label{font-weight:600}
+.hint{font-size:13px;color:var(--soft);margin:4px 0 0}
+input[type=number],select{font:16px Barlow;width:92px;min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:0 10px}
+input[type=range]{width:150px;accent-color:var(--red)}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{font:600 16px Barlow;min-height:44px;border-radius:0;background:transparent;color:var(--ink);padding:0 14px}
+.seg button.on{background:var(--ink);color:var(--panel)}
+.meter{height:8px;background:var(--bg);border-radius:4px;overflow:hidden;position:relative;margin-top:6px}
+.meter i{position:absolute;inset:0 auto 0 0;background:var(--ok);width:0}
+.meter b{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--red)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+td,th{padding:7px 4px;border-top:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font:600 14px Barlow;color:var(--soft);border-top:0}
+td:first-child,th:first-child{text-align:left}
+.sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:8px}
+.sum div{background:var(--bg);border-radius:10px;padding:8px;text-align:center}
+.sum b{display:block;font:700 26px "Barlow Condensed";font-variant-numeric:tabular-nums}
+.sum span{font-size:13px;color:var(--soft)}
+.ghost{background:transparent;color:var(--soft);font:600 15px Barlow;min-height:44px;border:1px solid var(--line)}
+.empty{color:var(--soft);font-size:15px;margin:4px 0}
+.best{color:var(--red);font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Chrono de tir</h1>
+
+<section class="clock" aria-live="polite">
+  <div class="state" id="state">Prêt</div>
+  <div class="time" id="time">0.00</div>
+  <div class="tgts" id="tgts"></div>
+</section>
+
+<div class="btns">
+  <button id="go">Démarrer</button>
+  <button id="hit">Cible touchée</button>
+</div>
+
+<section class="card" id="res" hidden>
+  <h2>Résultat</h2>
+  <div class="sum">
+    <div><b id="rTot">–</b><span>Total</span></div>
+    <div><b id="rDraw">–</b><span>1re cible</span></div>
+    <div><b id="rSplit">–</b><span>Transition moy.</span></div>
+  </div>
+  <table><thead><tr><th>Cible</th><th>Temps</th><th>Transition</th></tr></thead><tbody id="rows"></tbody></table>
+</section>
+
+<section class="card">
+  <h2>Réglages</h2>
+  <div class="row"><label for="n">Nombre de cibles</label><input type="number" id="n" min="1" max="12" value="4" inputmode="numeric"></div>
+  <div class="row"><label for="delay">Délai avant le bip</label>
+    <select id="delay"><option value="r">Aléatoire 2–5 s</option><option value="2">2 s</option><option value="3">3 s</option><option value="0">Immédiat</option></select></div>
+  <div class="row"><label for="par">Par time (s)</label><input type="number" id="par" min="0" step="0.1" placeholder="aucun" inputmode="decimal"></div>
+  <div class="row"><span><label>Détection</label></span>
+    <div class="seg" role="group" aria-label="Mode de détection"><button id="mTap" class="on">Tap</button><button id="mMic">Micro</button></div></div>
+  <p class="hint" id="modeHint">Tap : un partenaire touche le gros bouton rouge à chaque cible atteinte (ou appuie sur Espace).</p>
+  <div id="micBox" hidden>
+    <div class="row"><label for="sens">Seuil de détection</label><input type="range" id="sens" min="0.1" max="0.95" step="0.05" value="0.5"></div>
+    <div class="meter" aria-hidden="true"><i id="lvl"></i><b id="thr"></b></div>
+    <p class="hint">La barre verte montre le niveau sonore ; chaque pic qui dépasse le trait rouge compte comme un tir.</p>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Historique</h2>
+  <div id="hist"></div>
+  <button class="ghost" id="clear" hidden>Effacer l'historique</button>
+</section>
+</div>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const S={st:'idle',t0:0,hits:[],raf:0,timer:0,mode:'tap',ctx:null,an:null,stream:null,ignore:0,last:0,parDone:false};
+const store={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const f=s=>s.toFixed(2);
+const N=()=>Math.max(1,Math.min(12,parseInt($('n').value)||4));
+
+const cfg=store.get('tir-cfg',{});
+if(cfg.n)$('n').value=cfg.n; if(cfg.delay)$('delay').value=cfg.delay; if(cfg.par)$('par').value=cfg.par; if(cfg.sens)$('sens').value=cfg.sens;
+const saveCfg=()=>store.set('tir-cfg',{n:N(),delay:$('delay').value,par:$('par').value,sens:$('sens').value});
+
+function drawTargets(){
+  const n=N();
+  $('tgts').innerHTML=Array.from({length:n},(_,i)=>{
+    const h=S.hits[i];
+    return `<div class="${h!=null?'hit':''}"><svg viewBox="0 0 44 58" aria-hidden="true"><path class="b" d="M16 2h12l3 6v8l9 6v26l-8 8H12l-8-8V22l9-6V8z"/><path class="z" d="M15 26h14v18H15z"/></svg><small>${h!=null?f(h):'T'+(i+1)}</small></div>`}).join('');
+}
+
+function audio(){
+  if(!S.ctx){const C=window.AudioContext||window.webkitAudioContext;if(C)S.ctx=new C()}
+  if(S.ctx&&S.ctx.state==='suspended')S.ctx.resume();
+  return S.ctx;
+}
+function beep(at,dur=0.35,freq=2400){
+  const c=S.ctx;if(!c)return;
+  const o=c.createOscillator(),g=c.createGain();
+  o.type='square';o.frequency.value=freq;g.gain.value=0.6;
+  o.connect(g).connect(c.destination);o.start(at);o.stop(at+dur);
+}
+
+function tick(){
+  if(S.st!=='run')return;
+  const t=(performance.now()-S.t0)/1000;
+  $('time').textContent=f(t);
+  const par=parseFloat($('par').value);
+  if(par>0&&!S.parDone&&t>=par){S.parDone=true;$('time').classList.add('par');beep(S.ctx?S.ctx.currentTime:0,0.25,1200)}
+  if(S.mode==='mic')listen();
+  S.raf=requestAnimationFrame(tick);
+}
+
+function start(){
+  const c=audio();saveCfg();
+  S.hits=[];S.parDone=false;$('time').classList.remove('par');$('time').textContent='0.00';$('res').hidden=true;drawTargets();
+  const d=$('delay').value,delay=d==='r'?2+Math.random()*3:parseFloat(d);
+  S.st='wait';$('state').textContent='Attention…';$('go').textContent='Annuler';$('go').classList.add('stop');
+  if(c)beep(c.currentTime+delay);
+  S.timer=setTimeout(()=>{
+    S.st='run';S.t0=performance.now();S.ignore=S.t0+450;S.last=0;
+    $('state').textContent='Feu !';$('hit').classList.toggle('on',S.mode==='tap');
+    S.raf=requestAnimationFrame(tick);
+  },delay*1000);
+}
+function stop(manual){
+  clearTimeout(S.timer);cancelAnimationFrame(S.raf);
+  const was=S.st;S.st='idle';$('hit').classList.remove('on');
+  $('go').textContent='Démarrer';$('go').classList.remove('stop');
+  if(manual&&was!=='run'){$('state').textContent='Annulé';return}
+  if(S.hits.length){$('time').textContent=f(S.hits[S.hits.length-1]);showResult()}
+  $('state').textContent=S.hits.length===N()?'Terminé':`Arrêté — ${S.hits.length}/${N()} cibles`;
+}
+function hit(){
+  if(S.st!=='run')return;
+  const t=(performance.now()-S.t0)/1000;
+  S.hits.push(t);drawTargets();
+  if(navigator.vibrate)try{navigator.vibrate(30)}catch(e){}
+  if(S.hits.length>=N())stop();
+}
+
+function showResult(){
+  const h=S.hits,n=h.length,splits=h.map((t,i)=>i?t-h[i-1]:t);
+  $('rTot').textContent=f(h[n-1]);$('rDraw').textContent=f(h[0]);
+  $('rSplit').textContent=n>1?f((h[n-1]-h[0])/(n-1)):'–';
+  $('rows').innerHTML=h.map((t,i)=>`<tr><td>Cible ${i+1}</td><td>${f(t)}</td><td>${i?f(splits[i]):'–'}</td></tr>`).join('');
+  $('res').hidden=false;
+  if(n===N()){
+    const H=store.get('tir-hist',[]);
+    H.unshift({d:Date.now(),n,tot:h[n-1],first:h[0],mode:S.mode});
+    store.set('tir-hist',H.slice(0,50));renderHist();
+  }
+}
+function renderHist(){
+  const H=store.get('tir-hist',[]);
+  if(!H.length){$('hist').innerHTML='<p class="empty">Tes séries complètes apparaîtront ici.</p>';$('clear').hidden=true;return}
+  const best={};H.forEach(r=>{if(!best[r.n]||r.tot<best[r.n])best[r.n]=r.tot});
+  $('hist').innerHTML=`<table><thead><tr><th>Date</th><th>Cibles</th><th>1re</th><th>Total</th></tr></thead><tbody>${
+    H.slice(0,15).map(r=>{const d=new Date(r.d);return `<tr><td>${d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})} ${d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td>${r.n}</td><td>${f(r.first)}</td><td class="${r.tot===best[r.n]?'best':''}">${f(r.tot)}</td></tr>`}).join('')
+  }</tbody></table><p class="hint">En rouge : ton meilleur total pour ce nombre de cibles.</p>`;
+  $('clear').hidden=false;
+}
+
+/* micro */
+let buf;
+function listen(){
+  if(!S.an)return;
+  S.an.getFloatTimeDomainData(buf);
+  let p=0;for(let i=0;i<buf.length;i++){const v=Math.abs(buf[i]);if(v>p)p=v}
+  $('lvl').style.width=Math.min(100,p*100)+'%';
+  const now=performance.now(),thr=parseFloat($('sens').value);
+  if(S.st==='run'&&p>=thr&&now>S.ignore&&now-S.last>90){S.last=now;hit()}
+}
+function idleMeter(){if(S.mode!=='mic'||S.st==='run')return;listen();requestAnimationFrame(idleMeter)}
+async function enableMic(){
+  try{
+    const c=audio();
+    S.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    const src=c.createMediaStreamSource(S.stream);S.an=c.createAnalyser();S.an.fftSize=1024;buf=new Float32Array(S.an.fftSize);src.connect(S.an);
+    return true;
+  }catch(e){return false}
+}
+async function setMode(m){
+  if(S.st!=='idle')return;
+  if(m==='mic'&&!S.an){
+    $('modeHint').textContent='Demande d’accès au micro…';
+    if(!(await enableMic())){
+      $('modeHint').textContent='Micro refusé ou indisponible ici. Ouvre cette page dans Safari ou Chrome (lien en plein écran) et autorise le micro, ou reste en mode Tap.';
+      return;
+    }
+  }
+  S.mode=m;$('mTap').classList.toggle('on',m==='tap');$('mMic').classList.toggle('on',m==='mic');
+  $('micBox').hidden=m!=='mic';
+  $('modeHint').textContent=m==='tap'?'Tap : un partenaire touche le gros bouton rouge à chaque cible atteinte (ou appuie sur Espace).':'Micro : chaque détonation est détectée automatiquement. Règle le seuil au-dessus du bruit du stand, sous le bruit d’un tir.';
+  if(m==='mic')idleMeter();
+}
+const setThr=()=>{$('thr').style.left=($('sens').value*100)+'%'};
+
+$('go').addEventListener('click',()=>S.st==='idle'?start():stop(true));
+$('hit').addEventListener('pointerdown',e=>{e.preventDefault();hit()});
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&S.st==='run'&&S.mode==='tap'){e.preventDefault();hit()}});
+$('mTap').addEventListener('click',()=>setMode('tap'));
+$('mMic').addEventListener('click',()=>setMode('mic'));
+$('sens').addEventListener('input',()=>{setThr();saveCfg()});
+$('n').addEventListener('change',()=>{$('n').value=N();S.hits=[];drawTargets();saveCfg()});
+['delay','par'].forEach(id=>$(id).addEventListener('change',saveCfg));
+$('clear').addEventListener('click',()=>{store.set('tir-hist',[]);renderHist()});
+
+setThr();drawTargets();renderHist();
+}
+</script>
+</body>
+</html>
